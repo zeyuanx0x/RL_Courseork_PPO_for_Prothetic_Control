@@ -1,0 +1,17 @@
+algos:
+- ppo
+env_name: myoElbowPose1D6MRandom-v0
+eval_episodes: 10
+force: false
+only_report: false
+output_dir:
+  checkpoints: checkpoints
+  figures: figures
+  reports: reports
+  results: results
+robustness_episodes: 5
+seeds:
+- 42
+- 43
+- 44
+total_timesteps: 100000
