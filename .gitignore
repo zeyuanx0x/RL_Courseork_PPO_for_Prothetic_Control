@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Checkpoints (model weights - keep confidential)
+checkpoints/
+
+# Results and reports (generated data - keep confidential)
+results/
+reports/
+figures/
+
+# Data files and images (confidential)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.csv
+*.npz
+*.npy
+
+# Environment and configuration
+.env
+*.env
+.venv/
+venv/
+conda_env/
+env/
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
