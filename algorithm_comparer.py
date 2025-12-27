@@ -273,7 +273,7 @@ class AlgorithmComparer:
         fig = plt.figure(figsize=(20, 15), dpi=300)
         fig.suptitle(f"Comprehensive Algorithm Comparison - {self.env_name}", fontsize=16, fontweight='bold')
         
-        # ========================== 1: Mean Return vs Environment Steps ==========================
+        # ========================== 1: Learning Curve Comparison ==========================
         ax1 = plt.subplot(2, 3, 1)
         
         # Calculate cumulative return vs steps for each algorithm
@@ -306,34 +306,50 @@ class AlgorithmComparer:
             ax1.plot(mean_steps, mean_returns, label=algo_name, color=colors[i], linewidth=2)
             ax1.fill_between(mean_steps, mean_returns - ci, mean_returns + ci, color=colors[i], alpha=0.2)
         
-        ax1.set_title("Mean Return vs Environment Steps")
+        ax1.set_title("Learning Curve Comparison")
         ax1.set_xlabel("Environment Steps")
         ax1.set_ylabel("Mean Episode Return")
         ax1.grid(True, alpha=0.3, linestyle='--')
         ax1.legend(fontsize=10, loc='best')
         
-        # ========================== 2: Mean Return vs Wall-clock Time ==========================
+        # ========================== 2: Success Rate vs Environment Steps ==========================
         ax2 = plt.subplot(2, 3, 2)
         
         for i, algo_name in enumerate(algorithms):
             algo_data = results["algorithms"][algo_name]
             seed_results = algo_data["seed_results"]
             
-            # Calculate mean return vs wall-clock time for each seed
-            returns = [sr["avg_return"] for sr in seed_results]
-            wall_clock_times = [sr["wall_clock_time"] for sr in seed_results]
+            # Calculate success rate vs steps for each algorithm
+            all_cumulative_successes = []
+            all_steps = []
             
-            ax2.scatter(wall_clock_times, returns, label=algo_name, color=colors[i], alpha=0.7, s=100)
+            for seed_result in seed_results:
+                # Calculate cumulative success over episodes
+                cumulative_successes = np.cumsum(seed_result["ep_successes"])
+                # Calculate cumulative steps over episodes
+                cumulative_steps = np.cumsum(seed_result["ep_lengths"])
+                # Calculate success rate for each episode
+                success_rates = cumulative_successes / (np.arange(len(cumulative_successes)) + 1)
+                
+                all_cumulative_successes.append(success_rates)
+                all_steps.append(cumulative_steps)
             
-            # Plot mean line
-            mean_time = np.mean(wall_clock_times)
-            mean_return = np.mean(returns)
-            ax2.plot([0, mean_time], [mean_return, mean_return], color=colors[i], linestyle='--', alpha=0.5)
-            ax2.plot([mean_time, mean_time], [0, mean_return], color=colors[i], linestyle='--', alpha=0.5)
+            # Calculate mean and 95% CI
+            max_len = max(len(steps) for steps in all_steps)
+            mean_steps = np.mean([np.pad(steps, (0, max_len - len(steps)), 'edge') for steps in all_steps], axis=0)
+            mean_success_rates = np.mean([np.pad(success, (0, max_len - len(success)), 'edge') for success in all_cumulative_successes], axis=0)
+            std_success_rates = np.std([np.pad(success, (0, max_len - len(success)), 'edge') for success in all_cumulative_successes], axis=0)
+            
+            # 95% CI = 1.96 * std / sqrt(n)
+            ci = 1.96 * std_success_rates / np.sqrt(len(all_cumulative_successes))
+            
+            ax2.plot(mean_steps, mean_success_rates, label=algo_name, color=colors[i], linewidth=2)
+            ax2.fill_between(mean_steps, mean_success_rates - ci, mean_success_rates + ci, color=colors[i], alpha=0.2)
         
-        ax2.set_title("Mean Return vs Wall-clock Time")
-        ax2.set_xlabel("Training Time (seconds)")
-        ax2.set_ylabel("Mean Episode Return")
+        ax2.set_title("Success Rate vs Environment Steps")
+        ax2.set_xlabel("Environment Steps")
+        ax2.set_ylabel("Success Rate")
+        ax2.set_ylim(0, 1.1)
         ax2.grid(True, alpha=0.3, linestyle='--')
         ax2.legend(fontsize=10, loc='best')
         
@@ -367,149 +383,8 @@ class AlgorithmComparer:
         ax3.grid(True, axis='y', alpha=0.3, linestyle='--')
         ax3.tick_params(axis='x', rotation=45)
         
-        # ========================== 4: Multi-Metric Radar Plot ==========================
-        ax4 = plt.subplot(2, 3, 4, projection='polar')
-        
-        # Define metrics and their weights
-        metrics = [
-            "Mean Return",
-            "Success Rate",
-            "Efficiency",
-            "Smoothness",
-            "Robustness",
-            "Avg Episode Length"
-        ]
-        
-        # Calculate normalized values for each metric
-        normalized_data = {}
-        metric_min_max = {
-            "Mean Return": (0, 0),
-            "Success Rate": (0, 1),
-            "Efficiency": (0, 0),
-            "Smoothness": (0, 0),
-            "Robustness": (0, 0),
-            "Avg Episode Length": (0, 0)
-        }
-        
-        # Calculate min and max for each metric across all algorithms
-        for algo_name in algorithms:
-            algo_data = results["algorithms"][algo_name]
-            seed_results = algo_data["seed_results"]
-            
-            # Calculate metric values for this algorithm
-            mean_return = np.mean([sr["avg_return"] for sr in seed_results])
-            success_rate = np.mean([sr["success_rate"] for sr in seed_results])
-            avg_ep_length = np.mean([sr["avg_episode_length"] for sr in seed_results])
-            avg_cost = np.mean([sr["avg_cost"] for sr in seed_results])
-            
-            # Avoid division by zero
-            if avg_ep_length > 0:
-                efficiency = mean_return / avg_ep_length
-            else:
-                efficiency = 0.0
-            
-            if avg_cost > 0:
-                smoothness = 1 / avg_cost  # Lower cost = more smooth
-            else:
-                smoothness = 10.0  # Arbitrary large value for perfect smoothness
-            
-            robustness = mean_return * 0.95  # Simulate robustness as 95% of return
-            
-            # Update min/max for each metric
-            metric_values = {
-                "Mean Return": mean_return,
-                "Success Rate": success_rate,
-                "Efficiency": efficiency,
-                "Smoothness": smoothness,
-                "Robustness": robustness,
-                "Avg Episode Length": avg_ep_length
-            }
-            
-            for metric, value in metric_values.items():
-                current_min, current_max = metric_min_max[metric]
-                if value < current_min or current_min == 0:
-                    current_min = value
-                if value > current_max:
-                    current_max = value
-                metric_min_max[metric] = (current_min, current_max)
-        
-        # Normalize data between 0 and 1 for each metric
-        for algo_name in algorithms:
-            algo_data = results["algorithms"][algo_name]
-            seed_results = algo_data["seed_results"]
-            
-            # Calculate metric values for this algorithm
-            mean_return = np.mean([sr["avg_return"] for sr in seed_results])
-            success_rate = np.mean([sr["success_rate"] for sr in seed_results])
-            avg_ep_length_val = np.mean([sr["avg_episode_length"] for sr in seed_results])
-            avg_cost = np.mean([sr["avg_cost"] for sr in seed_results])
-            
-            # Avoid division by zero
-            if avg_ep_length_val > 0:
-                efficiency = mean_return / avg_ep_length_val
-            else:
-                efficiency = 0.0
-            
-            if avg_cost > 0:
-                smoothness = 1 / avg_cost
-            else:
-                smoothness = 10.0  # Arbitrary large value for perfect smoothness
-            
-            robustness = mean_return * 0.95
-            avg_ep_length = avg_ep_length_val
-            
-            # Normalize each metric with division by zero protection
-            def normalize(value, min_val, max_val):
-                if max_val - min_val < 1e-6:
-                    return 0.5  # All values are the same, set to midpoint
-                return (value - min_val) / (max_val - min_val)
-            
-            norm_return = normalize(mean_return, metric_min_max["Mean Return"][0], metric_min_max["Mean Return"][1])
-            norm_success = success_rate  # Already between 0 and 1
-            norm_efficiency = normalize(efficiency, metric_min_max["Efficiency"][0], metric_min_max["Efficiency"][1])
-            norm_smoothness = normalize(smoothness, metric_min_max["Smoothness"][0], metric_min_max["Smoothness"][1])
-            norm_robustness = normalize(robustness, metric_min_max["Robustness"][0], metric_min_max["Robustness"][1])
-            
-            # Invert episode length (shorter is better)
-            ep_length_range = metric_min_max["Avg Episode Length"][1] - metric_min_max["Avg Episode Length"][0]
-            if ep_length_range < 1e-6:
-                norm_ep_length = 0.5
-            else:
-                norm_ep_length = 1 - (avg_ep_length - metric_min_max["Avg Episode Length"][0]) / ep_length_range
-            
-            normalized_data[algo_name] = [
-                norm_return,
-                norm_success,
-                norm_efficiency,
-                norm_smoothness,
-                norm_robustness,
-                norm_ep_length
-            ]
-        
-        # Plot radar chart
-        num_metrics = len(metrics)
-        angles = np.linspace(0, 2 * np.pi, num_metrics, endpoint=False).tolist()
-        # Close the plot
-        angles += angles[:1]
-        
-        for i, algo_name in enumerate(algorithms):
-            values = normalized_data[algo_name]
-            values += values[:1]  # Close the plot
-            
-            ax4.plot(angles, values, color=colors[i], linewidth=2, linestyle='solid', label=algo_name)
-            ax4.fill(angles, values, color=colors[i], alpha=0.25)
-        
-        # Set metric labels
-        ax4.set_xticks(angles[:-1])
-        ax4.set_xticklabels(metrics, fontsize=8)
-        
-        # Add grid and title
-        ax4.grid(True, alpha=0.3, linestyle='--')
-        ax4.set_title("Multi-Metric Performance Comparison", fontsize=10)
-        ax4.legend(fontsize=8, loc='upper right', bbox_to_anchor=(1.3, 1.1))
-        
-        # ========================== 5: Robustness Curve ==========================
-        ax5 = plt.subplot(2, 3, 5)
+        # ========================== 4: Robustness Curve ==========================
+        ax4 = plt.subplot(2, 3, 4)
         
         # For this demo, we'll simulate robustness data
         # In real usage, this would use the test_robustness method
@@ -533,16 +408,16 @@ class AlgorithmComparer:
             
             returns = [base_return * (1 - robustness_factor * level) for level in perturbation_levels]
             
-            ax5.plot(perturbation_levels, returns, label=algo_name, color=colors[i], linewidth=2, marker='o', markersize=8)
+            ax4.plot(perturbation_levels, returns, label=algo_name, color=colors[i], linewidth=2, marker='o', markersize=8)
         
-        ax5.set_title("Robustness Curve")
-        ax5.set_xlabel("Perturbation Intensity")
-        ax5.set_ylabel("Mean Episode Return")
-        ax5.grid(True, alpha=0.3, linestyle='--')
-        ax5.legend(fontsize=10, loc='best')
+        ax4.set_title("Robustness Curve")
+        ax4.set_xlabel("Perturbation Intensity")
+        ax4.set_ylabel("Mean Episode Return")
+        ax4.grid(True, alpha=0.3, linestyle='--')
+        ax4.legend(fontsize=10, loc='best')
         
-        # ========================== 6: Reward-Cost Tradeoff ==========================
-        ax6 = plt.subplot(2, 3, 6)
+        # ========================== 5: Reward-Cost Tradeoff ==========================
+        ax5 = plt.subplot(2, 3, 5)
         
         for i, algo_name in enumerate(algorithms):
             algo_data = results["algorithms"][algo_name]
@@ -552,15 +427,40 @@ class AlgorithmComparer:
             returns = [sr["avg_return"] for sr in seed_results]
             costs = [sr["avg_cost"] for sr in seed_results]
             
-            ax6.scatter(costs, returns, label=algo_name, color=colors[i], alpha=0.7, s=100)
+            ax5.scatter(costs, returns, label=algo_name, color=colors[i], alpha=0.7, s=100)
             
             # Plot mean point
             mean_cost = np.mean(costs)
             mean_return = np.mean(returns)
-            ax6.scatter(mean_cost, mean_return, color=colors[i], s=200, marker='X', edgecolors='black')
+            ax5.scatter(mean_cost, mean_return, color=colors[i], s=200, marker='X', edgecolors='black')
         
-        ax6.set_title("Reward-Cost Tradeoff")
-        ax6.set_xlabel("Cost (Action Smoothness)")
+        ax5.set_title("Reward-Cost Tradeoff")
+        ax5.set_xlabel("Cost (Action Smoothness)")
+        ax5.set_ylabel("Mean Episode Return")
+        ax5.grid(True, alpha=0.3, linestyle='--')
+        ax5.legend(fontsize=10, loc='best')
+        
+        # ========================== 6: Mean Return vs Wall-clock Time ==========================
+        ax6 = plt.subplot(2, 3, 6)
+        
+        for i, algo_name in enumerate(algorithms):
+            algo_data = results["algorithms"][algo_name]
+            seed_results = algo_data["seed_results"]
+            
+            # Calculate mean return vs wall-clock time for each seed
+            returns = [sr["avg_return"] for sr in seed_results]
+            wall_clock_times = [sr["wall_clock_time"] for sr in seed_results]
+            
+            ax6.scatter(wall_clock_times, returns, label=algo_name, color=colors[i], alpha=0.7, s=100)
+            
+            # Plot mean line
+            mean_time = np.mean(wall_clock_times)
+            mean_return = np.mean(returns)
+            ax6.plot([0, mean_time], [mean_return, mean_return], color=colors[i], linestyle='--', alpha=0.5)
+            ax6.plot([mean_time, mean_time], [0, mean_return], color=colors[i], linestyle='--', alpha=0.5)
+        
+        ax6.set_title("Mean Return vs Wall-clock Time")
+        ax6.set_xlabel("Training Time (seconds)")
         ax6.set_ylabel("Mean Episode Return")
         ax6.grid(True, alpha=0.3, linestyle='--')
         ax6.legend(fontsize=10, loc='best')
